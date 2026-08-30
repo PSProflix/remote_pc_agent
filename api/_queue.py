@@ -10,10 +10,23 @@ RESULT_PREFIX = os.getenv("REDIS_RESULT_PREFIX", "remote_pc_agent:result:")
 
 
 def _config():
-    url = os.environ.get("UPSTASH_REDIS_REST_URL", "").rstrip("/")
-    token = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
+    # Vercel's current Upstash integration exposes KV_* variables.
+    # Keep UPSTASH_* as a fallback for manually configured Upstash projects.
+    url = (
+        os.getenv("KV_REST_API_URL")
+        or os.getenv("UPSTASH_REDIS_REST_URL")
+        or ""
+    ).rstrip("/")
+    token = (
+        os.getenv("KV_REST_API_TOKEN")
+        or os.getenv("UPSTASH_REDIS_REST_TOKEN")
+        or ""
+    )
     if not url or not token:
-        raise RuntimeError("Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN")
+        raise RuntimeError(
+            "Missing KV_REST_API_URL/KV_REST_API_TOKEN "
+            "or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN"
+        )
     return url, token
 
 
