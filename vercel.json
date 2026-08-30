@@ -5,6 +5,7 @@
     { "source": "/.well-known/oauth-authorization-server", "destination": "/api/oauth?route=metadata" },
     { "source": "/api/oauth/register", "destination": "/api/oauth?route=register" },
     { "source": "/api/oauth/authorize", "destination": "/api/oauth?route=authorize" },
-    { "source": "/api/oauth/token", "destination": "/api/oauth?route=token" }
+    { "source": "/api/oauth/token", "destination": "/api/oauth?route=token" },
+    { "source": "/api/kimi/exec", "destination": "/api/kimi" }
   ]
 }
