@@ -96,19 +96,17 @@ def _authorize_get(handler, q):
         return _oauth_error(handler, "unsupported_response_type", "only response_type=code is supported", redirect_uri, state)
     if redirect_uri not in client.get("redirect_uris", []):
         return _oauth_error(handler, "invalid_request", "redirect_uri is not registered")
-    if not _pkce_ok("test", code_challenge, code_challenge_method):
-        # This branch is intentionally not a validation shortcut; it only checks method here.
-        if code_challenge_method != "S256" or not code_challenge:
-            return _oauth_error(handler, "invalid_request", "PKCE S256 is required", redirect_uri, state)
+    if not code_challenge or code_challenge_method != "S256":
+        return _oauth_error(handler, "invalid_request", "PKCE S256 is required", redirect_uri, state)
 
     safe_name = html.escape(client.get("client_name") or client_id)
     safe_scope = html.escape(scope)
     hidden = "".join(
         f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">'
-        for k, v in q.items() if k in {
+        for k, values in q.items() if k in {
             "client_id", "redirect_uri", "response_type", "state", "scope",
             "code_challenge", "code_challenge_method"
-        } for v in [v[0]]
+        } for v in [values[0]]
     )
     page = f"""<!doctype html><html><head><meta charset='utf-8'><title>Authorize remote PC agent</title>
 <style>body{{font-family:system-ui;max-width:620px;margin:60px auto;padding:24px}}.box{{border:1px solid #ddd;border-radius:14px;padding:24px}}input{{width:100%;padding:12px;margin:8px 0 16px;box-sizing:border-box}}button{{padding:12px 18px;border:0;border-radius:8px;cursor:pointer}}.warn{{background:#fff3cd;padding:12px;border-radius:8px}}</style></head>
@@ -222,14 +220,15 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         q = parse_qs(urlparse(self.path).query)
-        if path.endswith("/.well-known/oauth-protected-resource") or path.endswith("/.well-known/oauth-protected-resource/api/mcp") or q.get("route", [""])[0] == "protected":
+        route = q.get("route", [""])[0]
+        if path.endswith("/.well-known/oauth-protected-resource") or path.endswith("/.well-known/oauth-protected-resource/api/mcp") or route == "protected":
             return _json_response(self, {
                 "resource": RESOURCE,
                 "authorization_servers": [ISSUER],
                 "bearer_methods_supported": ["header"],
                 "scopes_supported": ["mcp:read", "mcp:write", "offline_access"],
             })
-        if path.endswith("/.well-known/oauth-authorization-server") or q.get("route", [""])[0] == "metadata":
+        if path.endswith("/.well-known/oauth-authorization-server") or route == "metadata":
             return _json_response(self, {
                 "issuer": ISSUER,
                 "authorization_endpoint": ISSUER + "/api/oauth/authorize",
@@ -241,7 +240,7 @@ class handler(BaseHTTPRequestHandler):
                 "code_challenge_methods_supported": ["S256"],
                 "scopes_supported": ["mcp:read", "mcp:write", "offline_access"],
             })
-        if path.endswith("/authorize"):
+        if path.endswith("/authorize") or route == "authorize":
             return _authorize_get(self, q)
         self.send_response(404)
         self.end_headers()
@@ -250,15 +249,17 @@ class handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         raw = self.rfile.read(length)
         path = self.path.split("?", 1)[0]
-        if path.endswith("/register"):
+        q = parse_qs(urlparse(self.path).query)
+        route = q.get("route", [""])[0]
+        if path.endswith("/register") or route == "register":
             return _register(self, raw)
-        if path.endswith("/token"):
+        if path.endswith("/token") or route == "token":
             try:
                 form = parse_qs(raw.decode("utf-8"))
             except Exception:
                 return _json_response(self, {"error": "invalid_request"}, 400)
             return _token(self, form)
-        if path.endswith("/authorize"):
+        if path.endswith("/authorize") or route == "authorize":
             try:
                 form = parse_qs(raw.decode("utf-8"))
             except Exception:
