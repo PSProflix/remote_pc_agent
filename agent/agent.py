@@ -60,7 +60,7 @@ def run_tool(tool: str, args: dict):
     if tool == "write_file":
         p = safe_path(args["path"])
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(args["content"], encoding="utf-8')
+        p.write_text(args["content"], encoding="utf-8")
         return {"path": str(p), "bytes": len(args["content"].encode("utf-8"))}
 
     if tool == "git_status":
@@ -78,8 +78,6 @@ def run_tool(tool: str, args: dict):
         if shell == "cmd":
             cmd = ["cmd.exe", "/d", "/s", "/c", command_text]
         else:
-            # Windows PowerShell 5.1 can emit legacy code pages. Force UTF-8
-            # before executing the requested command so non-ASCII output survives.
             wrapped = (
                 "$OutputEncoding = [Console]::OutputEncoding = "
                 "[System.Text.UTF8Encoding]::new(); "
@@ -91,8 +89,8 @@ def run_tool(tool: str, args: dict):
         try:
             result = _run_process(cmd, WORKSPACE, timeout)
         except subprocess.TimeoutExpired as exc:
-            stdout = exc.stdout or b"" if isinstance(exc.stdout, (bytes, bytearray)) else (exc.stdout or "")
-            stderr = exc.stderr or b"" if isinstance(exc.stderr, (bytes, bytearray)) else (exc.stderr or "")
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
             if isinstance(stdout, (bytes, bytearray)):
                 stdout = stdout.decode("utf-8", "replace")
             if isinstance(stderr, (bytes, bytearray)):
@@ -144,7 +142,8 @@ def main():
                 try:
                     result = run_tool(tool, args)
                     submit_result(command_id, True, result=result)
-                    print(f"[agent] completed {command_id} rc={result.get('returncode', '') if isinstance(result, dict) else ''}")
+                    rc = result.get("returncode", "") if isinstance(result, dict) else ""
+                    print(f"[agent] completed {command_id} rc={rc}")
                 except Exception as exc:
                     submit_result(command_id, False, error=f"{type(exc).__name__}: {exc}")
                     print(f"[agent] failed {command_id}: {exc}")
