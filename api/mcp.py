@@ -1,9 +1,10 @@
 import json
-import os
 from http.server import BaseHTTPRequestHandler
 
 from api._auth import authorized
 from api._queue import enqueue, wait_for_result
+
+RESOURCE_METADATA = "https://remote-pc-agent-le6k.vercel.app/.well-known/oauth-protected-resource/api/mcp"
 
 TOOLS = [
     {
@@ -67,8 +68,9 @@ def tool_call(name, arguments):
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if not authorized(self):
-            self._json(rpc_error(None, -32001, "unauthorized"), 401)
+        auth = authorized(self)
+        if not auth:
+            self._unauthorized()
             return
 
         try:
@@ -85,7 +87,7 @@ class handler(BaseHTTPRequestHandler):
             self._json(rpc_result(request_id, {
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "remote-pc-agent", "version": "1.0.0"},
+                "serverInfo": {"name": "remote-pc-agent", "version": "2.0.0"},
             }))
             return
 
@@ -99,6 +101,10 @@ class handler(BaseHTTPRequestHandler):
             return
 
         if method == "tools/call":
+            scope = auth.get("scope", "")
+            if "mcp:write" not in scope and not auth.get("legacy"):
+                self._json(rpc_error(request_id, -32003, "mcp:write scope required"), 403)
+                return
             params = body.get("params") or {}
             try:
                 result = tool_call(params.get("name"), params.get("arguments"))
@@ -113,17 +119,27 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not authorized(self):
-            self._json({"error": "unauthorized"}, 401)
+            self._unauthorized()
             return
         self.send_response(405)
         self.send_header("Allow", "POST")
         self.end_headers()
 
-    def _json(self, data, status=200):
+    def _unauthorized(self):
+        self._json(
+            {"error": "unauthorized"},
+            401,
+            {"WWW-Authenticate": f'Bearer resource_metadata="{RESOURCE_METADATA}"'},
+        )
+
+    def _json(self, data, status=200, extra_headers=None):
         payload = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        if extra_headers:
+            for key, value in extra_headers.items():
+                self.send_header(key, value)
         self.end_headers()
         self.wfile.write(payload)
 
